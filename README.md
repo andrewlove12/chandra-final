@@ -7,7 +7,10 @@ Start by downloading this repo and place it either in your Downloads folder or u
 
 
 
-Run the vc_redist.x64.exe first. Python changed how it looks for DLLs on the system and this adds/fixes the DLLs needed to run the pymupdf module. Without it, the program will error out at the beginning.
+Run both vc_redist.x64.exe first. Python changed how it looks for DLLs on the system and this adds/fixes the DLLs needed to run the pymupdf module. Without it, the program will error out at the beginning and again after inputting the input and output directories if only the 1st is run.
+
+<img width="1106" height="387" alt="image" src="https://github.com/user-attachments/assets/329d3638-5b0a-4888-bf14-a237e6c1d8db" />
+
 
 <img width="1114" height="257" alt="image" src="https://github.com/user-attachments/assets/ac06336e-f978-4206-9528-190290169be8" />
 

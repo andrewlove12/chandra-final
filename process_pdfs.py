@@ -7,6 +7,7 @@ import sys
 from bs4 import BeautifulSoup
 import pymupdf
 import logging
+#handle Kwargs error since it's just a warning and isn't an error preventing processing. see https://github.com/vllm-project/vllm/issues/39768
 logging.getLogger("transformers.processing_utils").setLevel(logging.ERROR)
 
 try:

@@ -4,12 +4,10 @@ import os
 os.environ["CUDA_VISIBLE_DEVICES"] = ""
 
 import sys
-import glob
-from pathlib import Path
 from bs4 import BeautifulSoup
-import pymupdf  # PyMuPDF
-import fitz
-from PIL import Image
+import pymupdf
+import logging
+logging.getLogger("transformers.processing_utils").setLevel(logging.ERROR)
 
 try:
     from chandra.model import InferenceManager
@@ -19,7 +17,7 @@ except ImportError:
     print("Please make sure you have activated the virtual environment where chandra-ocr is installed.")
     sys.exit(1)
 
-def render_html_to_pdf_page(page, html_content: str, rect: fitz.Rect, color=(1, 0, 0)):
+def render_html_to_pdf_page(page, html_content: str, rect: pymupdf.Rect, color=(1, 0, 0)):
     soup = BeautifulSoup(html_content, "html.parser")
     
     table = soup.find("table")
@@ -50,7 +48,7 @@ def render_html_to_pdf_page(page, html_content: str, rect: fitz.Rect, color=(1, 
                 colspan = int(cell.get("colspan", 1))
                 cell_width = col_width * colspan
                 
-                cell_rect = fitz.Rect(x, y, x + cell_width, y + row_height)
+                cell_rect = pymupdf.Rect(x, y, x + cell_width, y + row_height)
                 
                 for br in cell.find_all("br"):
                     br.replace_with("\n")
@@ -93,9 +91,8 @@ def render_html_to_pdf_page(page, html_content: str, rect: fitz.Rect, color=(1, 
 
 def process_pdf(input_pdf: str, output_pdf: str, manager: InferenceManager):
     print(f"Processing {input_pdf}...")
-    
     try:
-        doc = fitz.open(input_pdf)
+        doc = pymupdf.open(input_pdf)
     except Exception as e:
         print(f"Failed to open PDF {input_pdf}: {e}")
         return
@@ -162,7 +159,7 @@ def process_pdf(input_pdf: str, output_pdf: str, manager: InferenceManager):
                     bbox[3] * scale_y
                 ]
                 
-                rect = fitz.Rect(pdf_bbox)
+                rect = pymupdf.Rect(pdf_bbox)
                 
                 try:
                     render_html_to_pdf_page(page, content, rect, color=(1, 0, 0))

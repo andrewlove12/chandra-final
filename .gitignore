@@ -3,3 +3,18 @@
 .idea/misc.xml
 .idea/modules.xml
 .idea/vcs.xml
+
+# Python / environment
+.venv/
+__pycache__/
+*.pyc
+local.env
+
+# Downloaded model weights (~10 GB, fetched by download_model.py)
+models/
+
+# Never commit notebooks, outputs, or OCR text
+*.pdf
+*.PDF
+.ocr_cache/
+*_page_*.json

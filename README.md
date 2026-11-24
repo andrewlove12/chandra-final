@@ -37,4 +37,23 @@ Assuming you have admin privileges, you'll need to open a Powershell window as a
 If you don't, open run.ps1 in a text editor and copy the commands and run them manually in a normal Powershell window.
 
 
+## What run.ps1 does
+
+The first run needs internet. It creates a `.venv` folder, installs the Python packages and downloads the Chandra OCR 2 model (about 10 GB) into `models\`. Only public packages and model files are downloaded. No notebook data is involved.
+
+Every run after that works with no internet. `process_pdfs.py` loads the model from `models\` only, turns on Hugging Face offline mode and blocks all outbound network connections while it runs. Notebook contents can't leave the machine.
+
+You can pass the folders directly instead of typing them at the prompts:
+
+```
+.\run.ps1 C:\path\to\notebooks C:\path\to\output
+.\run.ps1 C:\path\to\notebooks C:\path\to\output --skip-existing
+.\run.ps1 C:\path\to\notebooks C:\path\to\output --device cuda   # only with a CUDA build of PyTorch
+```
+
+OCR results are cached in `<output folder>\.ocr_cache\`, so a rerun only redraws the overlay and doesn't OCR the pages again. Delete that folder to force a fresh OCR. The cache holds the transcribed notebook text, so treat it as being as sensitive as the notebooks.
+
+The model runs on CPU by default. That's slow (minutes per page) and needs a lot of RAM (32 GB+ recommended).
+
+
 Submit any issues to the Issues tracker on this Github repo so I can keep track of any errors you're getting and you can upload logs and files as needed. I'm also taking this route so I can make updates to the program as needed and it's easier for you to grab a copy of it.

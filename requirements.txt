@@ -1,10 +1,13 @@
 # Direct dependencies only; pip resolves the rest.
+# torch / torchvision are NOT listed here: setup.ps1 installs the build that
+# matches the GPU (NVIDIA CUDA, AMD ROCm, or CPU) before installing these.
 # chandra-ocr 0.3.x targets the Chandra OCR 2 model ([hf] = local PyTorch backend).
 chandra-ocr[hf] >= 0.3.0, < 0.4
-torch >= 2.14.0
-torchvision >= 0.29.0
 transformers >= 5.17.0
 accelerate >= 1.15
 huggingface-hub >= 1.33.0
+psutil >= 7.0
 pymupdf >= 1.28.2
 beautifulsoup4 >= 4.15.0
+# CPU runtime for the small page-orientation classifier (orientation.py).
+onnxruntime >= 1.20

@@ -11,3 +11,5 @@ pymupdf >= 1.28.2
 beautifulsoup4 >= 4.15.0
 # CPU runtime for the small page-orientation classifier (orientation.py).
 onnxruntime >= 1.20
+# Desktop app (gui.py).
+PySide6-Essentials >= 6.9

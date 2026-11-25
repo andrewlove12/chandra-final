@@ -1,65 +1,43 @@
-Start by downloading this repo and place it either in your Downloads folder or user folder and extract the zip.
+# Chandra Notebook OCR
 
+Reads scanned, handwritten lab-notebook PDFs on your own PC and saves a copy of each with the transcription overlaid in red. Everything runs offline; the notebooks never leave the computer.
 
-<img width="1542" height="469" alt="image" src="https://github.com/user-attachments/assets/cb47dbd1-4956-465d-962c-955e215b5aab" />
+## Installing and using it
 
+1. Run `ChandraNotebookOCR-Setup-<version>.exe` (built as described at the end of this section). It runs as administrator (Windows asks for permission once) and installs into `C:\Program Files\Chandra Notebook OCR` by default.
+2. When asked, say whether you have an **NVIDIA** or **AMD** graphics card (the one it finds is pre-selected). It installs the matching PyTorch; choose **Neither** if you have no graphics card or aren't sure, which installs the standard PyTorch that runs on the processor (much slower).
+3. Setup then downloads a private copy of Python, PyTorch and the OCR models (about 15 GB) in a window that shows the progress. This takes a while and needs internet only this once. It doesn't touch any Python already on the PC, and uninstalling removes everything it downloaded.
+4. Open **Chandra Notebook OCR** from the Start menu: pick the folder with your notebook PDFs and a different folder for the results, and press Start. It shows progress per notebook and page, lists pages worth double-checking, and can be cancelled at any time (pages already read are kept, so the next run continues where it left off). It runs fully offline.
 
+If setup fails (for example the internet dropped), the error says so and the log is in the install folder under `logs\setup.log`; running the installer again continues where it stopped.
 
+To build the installer: install [Inno Setup 6](https://jrsoftware.org/isinfo.php), then run `ISCC.exe installer\chandra-ocr.iss`. The result is in `dist\`. Silent installs accept `/GPU=nvidia`, `/GPU=amd` or `/GPU=none`.
 
+## What setup installs
 
-Run both vc_redist.x64.exe first. Python changed how it looks for DLLs on the system and this adds/fixes the DLLs needed to run the pymupdf module. Without it, the program will error out at the beginning and again after inputting the input and output directories if only the 1st is run.
+Everything except the VC++ runtimes goes into the install folder:
 
-<img width="1106" height="387" alt="image" src="https://github.com/user-attachments/assets/329d3638-5b0a-4888-bf14-a237e6c1d8db" />
-
-
-<img width="1114" height="257" alt="image" src="https://github.com/user-attachments/assets/ac06336e-f978-4206-9528-190290169be8" />
-
-
-
-
-
-You need Python installed. You can check it by opening a blank Powershell window and running the command " python " to start python and print out the version. `setup.ps1` picks a compatible version for the virtual environment on its own (through the `py` launcher, or `uv` if needed): NVIDIA and CPU setups can use 3.14, but AMD GPUs need Python 3.12 or 3.13 because AMD has no 3.14 build of PyTorch yet.
-
-<img width="890" height="85" alt="image" src="https://github.com/user-attachments/assets/32ac78ce-8eae-47cb-bdd2-954bf52299a8" />
-
-
-
-
-
-Assuming you have admin privileges, you'll need to open a Powershell window as admin, run Set-ExecutionPolicy Bypass then run the run.ps1 file. The run.ps1 doesn't need to be run as admin, everything works in userland going forward, admin is just needed to change the execution policy.
-
-<img width="951" height="135" alt="image" src="https://github.com/user-attachments/assets/42f7af01-e7f8-42a6-847d-b7c5e54e339b" />
-
-
-
-
-
-If you don't, open run.ps1 in a text editor and copy the commands and run them manually in a normal Powershell window.
-
-
-## What run.ps1 does
-
-The first run needs internet. `run.ps1` calls `setup.ps1`, which:
-
-1. Detects your graphics card and installs the matching version of PyTorch:
+1. **Python:** the project's own copy of Python, at the exact version it was tested with (3.12.16 for AMD, 3.13.18 otherwise), downloaded by a pinned, checksum-verified copy of [uv](https://github.com/astral-sh/uv). Any Python already installed on the PC is never used or touched.
+2. **PyTorch** for the graphics card you picked:
    - **NVIDIA:** the CUDA 13.0 build. RTX 50-series cards need NVIDIA driver 580 or newer.
-   - **AMD Radeon RX 7000 / 9000:** AMD's ROCm build for Windows. This needs Python 3.12 or 3.13 (AMD has no 3.14 build yet) and a recent Adrenalin driver.
-   - **Anything else:** the CPU-only build.
-2. Creates a `.venv` folder with a suitable Python version and installs the other packages.
-3. Downloads the Chandra OCR 2 model (about 10 GB) and a small page-orientation model (7 MB) into `models\`.
+   - **AMD Radeon RX 7000 / 9000:** AMD's ROCm build for Windows, with a recent Adrenalin driver.
+   - **Neither:** the standard PyTorch package, which runs on the processor.
+3. The other packages, and the **models**: Chandra OCR 2 (about 10 GB) and a small page-orientation model (7 MB).
+4. The **Microsoft Visual C++ runtimes** (2015 and the current v14 build), which are bundled in the installer and needed by DLLs in PyMuPDF, PyTorch and onnxruntime. If a newer runtime is already installed it's left as it is. These are the only things installed outside the install folder.
 
-Only public packages and model files are downloaded. No notebook data is involved. To force a particular build, run `.\setup.ps1 -Backend cpu` (or `cuda` / `rocm`) once. The choice is remembered for later runs.
+Only public packages and model files are downloaded. No notebook data is involved. After setup the app works with no internet: the OCR engine loads the models from the install folder only, turns on Hugging Face offline mode and blocks all outbound network connections while it runs. Notebook contents can't leave the machine.
 
-Every run after that works with no internet. `process_pdfs.py` loads the model from `models\` only, turns on Hugging Face offline mode and blocks all outbound network connections while it runs. Notebook contents can't leave the machine.
+To change the graphics card choice later, run the installer again and pick a different answer.
 
-You can pass the folders directly instead of typing them at the prompts:
+## Command line (advanced)
+
+The app is a front end for `process_pdfs.py`, which can also be run directly with the installed Python:
 
 ```
-.\run.ps1 C:\path\to\notebooks C:\path\to\output
-.\run.ps1 C:\path\to\notebooks C:\path\to\output --skip-existing
-.\run.ps1 C:\path\to\notebooks C:\path\to\output --device cpu    # ignore the GPU
-.\run.ps1 C:\path\to\notebooks C:\path\to\output --gpu-reserve-gb 4
-.\run.ps1 C:\path\to\notebooks C:\path\to\output --rotate "notebook 3.pdf:5=90"
+cd "C:\Program Files\Chandra Notebook OCR"
+.venv\Scripts\python.exe process_pdfs.py C:\path\to\notebooks C:\path\to\output
+.venv\Scripts\python.exe process_pdfs.py C:\path\to\notebooks C:\path\to\output --skip-existing
+.venv\Scripts\python.exe process_pdfs.py C:\path\to\notebooks C:\path\to\output --rotate "notebook 3.pdf:5=90"
 ```
 
 ### All options
@@ -96,7 +74,7 @@ Text is placed where the model found it on the page, as large as fits, but never
 
 ### Which GPU is used
 
-`python gpu_select.py` lists the GPUs PyTorch can see and which ones the program will use. Integrated graphics and GPUs that PyTorch's build doesn't support are hidden automatically; on AMD, leaving the integrated GPU visible makes every GPU fail.
+`.venv\Scripts\python.exe gpu_select.py` (in the install folder) lists the GPUs PyTorch can see and which ones the program will use. Integrated graphics and GPUs that PyTorch's build doesn't support are hidden automatically; on AMD, leaving the integrated GPU visible makes every GPU fail.
 
 ### GPU memory
 

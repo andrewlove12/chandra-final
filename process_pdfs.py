@@ -209,13 +209,25 @@ def render_html_to_pdf_page(page, html_content: str, rect: pymupdf.Rect, color=R
     return drawn
 
 
+# --- Machine-readable progress (for gui.py) ----------------------------------
+
+PROGRESS_JSON = False  # set by --progress-json
+
+
+def emit(event: str, **fields):
+    """With --progress-json, print one '@@{json}' line per event for the GUI to parse."""
+    if PROGRESS_JSON:
+        print("@@" + json.dumps({"event": event, **fields}), flush=True)
+
+
 # --- OCR with cache ----------------------------------------------------------
 
 def ocr_page(manager, input_pdf: str, page_index: int, cache_file: str, dpi: int, quantize: str, rotate: int = 0):
-    """Return (chunks, (img_width, img_height)) for one page, using the cache when valid.
+    """Return (chunks, (img_width, img_height), info) for one page, using the cache when valid.
 
     `rotate` turns the rendered page clockwise by that many degrees before OCR
     (for pages scanned sideways/upside down); boxes are in the turned image.
+    `info` has cached / seconds / tokens / attempts / warning, for progress reporting.
     """
     if os.path.exists(cache_file):
         try:
@@ -229,7 +241,9 @@ def ocr_page(manager, input_pdf: str, page_index: int, cache_file: str, dpi: int
                     and cached.get("rotation", 0) == rotate
                     and cached.get("token_count", 0) < settings.MAX_OUTPUT_TOKENS):
                 print("    Using cached OCR result")
-                return cached["chunks"], tuple(cached["image_size"])
+                info = {"cached": True, "seconds": 0, "tokens": cached.get("token_count", 0),
+                        "attempts": cached.get("attempts", 1), "warning": bool(cached.get("error"))}
+                return cached["chunks"], tuple(cached["image_size"]), info
         except (OSError, ValueError, KeyError):
             pass  # corrupt/old cache: just redo the page
 
@@ -265,7 +279,9 @@ def ocr_page(manager, input_pdf: str, page_index: int, cache_file: str, dpi: int
             "error": bool(result.error),
             "chunks": result.chunks,
         }, f)
-    return result.chunks, img.size
+    info = {"cached": False, "seconds": round(seconds, 1), "tokens": result.token_count,
+            "attempts": stats["attempts"], "warning": bool(result.error)}
+    return result.chunks, img.size, info
 
 
 def free_gpu_cache():
@@ -276,30 +292,42 @@ def free_gpu_cache():
 
 
 def process_pdf(input_pdf: str, output_pdf: str, cache_dir: str, manager, dpi: int, quantize: str = "none",
-                rotations: dict | None = None):
-    """`rotations` maps 1-based page numbers to clockwise degrees (see --rotate)."""
+                rotations: dict | None = None, index: int = 1, total: int = 1, rel_path: str = ""):
+    """`rotations` maps 1-based page numbers to clockwise degrees (see --rotate).
+
+    Returns the number of pages that failed (-1 if the PDF couldn't be opened).
+    """
     rotations = rotations or {}
     print(f"Processing {input_pdf}...")
     try:
         doc = pymupdf.open(input_pdf)
     except Exception as e:
         print(f"  Failed to open PDF: {e}")
-        return
+        emit("pdf_error", index=index, total=total, name=rel_path, message=f"Couldn't open PDF: {e}")
+        return -1
 
+    failed = 0
+    emit("pdf_start", index=index, total=total, name=rel_path, pages=len(doc))
     try:
         for page_index, page in enumerate(doc):
             rotate = rotations.get(page_index + 1, 0)
             print(f"  Page {page_index + 1}/{len(doc)}" + (f" (rotated {rotate}°)" if rotate else ""))
+            emit("page_start", index=index, page=page_index + 1, pages=len(doc), rotated=rotate)
             cache_file = os.path.join(cache_dir, f"page_{page_index + 1:04d}.json")
             try:
-                chunks, (img_w, img_h) = ocr_page(manager, input_pdf, page_index, cache_file, dpi, quantize, rotate)
+                chunks, (img_w, img_h), info = ocr_page(manager, input_pdf, page_index, cache_file, dpi, quantize,
+                                                        rotate)
             except Exception as e:
+                failed += 1
                 if "out of memory" in str(e).lower():
-                    print(f"  Page {page_index + 1}: GPU ran out of memory. Re-run with a larger --gpu-reserve-gb "
-                          "(more of the model goes to system RAM); finished pages are cached.")
+                    msg = ("GPU ran out of memory. Re-run with a larger GPU memory reserve "
+                           "(more of the model goes to system RAM); finished pages are cached.")
+                    print(f"  Page {page_index + 1}: {msg}")
                 else:
+                    msg = f"OCR failed: {type(e).__name__}: {e}"
                     print(f"  Error running OCR on page {page_index + 1}:")
                     traceback.print_exc()
+                emit("page_error", index=index, page=page_index + 1, pages=len(doc), message=msg)
                 continue
             finally:
                 free_gpu_cache()
@@ -327,14 +355,24 @@ def process_pdf(input_pdf: str, output_pdf: str, cache_dir: str, manager, dpi: i
                 except Exception as e:
                     print(f"    Failed to render block at {rect}: {e}")
             print(f"    Overlay: {words} words" + (f", {spilled} of them spill past their box" if spilled else ""))
+            emit("page_done", index=index, page=page_index + 1, pages=len(doc), words=words, spilled=spilled, **info)
 
+        if failed == len(doc):
+            # Saving would leave an overlay-less copy that --skip-existing then skips for good.
+            print(f"  Not saving {output_pdf}: OCR failed on every page")
+            emit("pdf_done", index=index, total=total, name=rel_path, saved=False, failed=failed)
+            return failed
         os.makedirs(os.path.dirname(os.path.abspath(output_pdf)), exist_ok=True)
         doc.save(output_pdf)
         print(f"  Saved {output_pdf}")
+        emit("pdf_done", index=index, total=total, name=rel_path, saved=True, failed=failed, output=output_pdf)
     except Exception as e:
         print(f"  Failed to save {output_pdf}: {e}")
+        emit("pdf_done", index=index, total=total, name=rel_path, saved=False, failed=failed,
+             message=f"Couldn't save: {e}")
     finally:
         doc.close()
+    return failed
 
 
 # --- Model loading -----------------------------------------------------------
@@ -478,6 +516,8 @@ def parse_args():
                              'Repeatable. Example: --rotate "DC pages 1-8.pdf:2=180"')
     parser.add_argument("--no-auto-rotate", action="store_true",
                         help="Don't check page orientation automatically before OCR")
+    parser.add_argument("--progress-json", action="store_true",
+                        help="Also print machine-readable '@@{json}' progress lines (used by gui.py)")
     args = parser.parse_args()
     try:
         args.rotate = [parse_rotate_spec(s) for s in args.rotate]
@@ -545,8 +585,11 @@ def detect_orientations(pdf_files, input_dir: str) -> dict:
             found[rel_path] = turns
             desc = ", ".join(f"page {p} by {d}°" for p, d in sorted(turns.items()))
             print(f"  PDF {i}: turning {desc}")
-    print(f"  Checked {n_pages} page(s) in {time.perf_counter() - start:.1f}s; "
-          f"{sum(len(t) for t in found.values())} need turning.")
+        emit("orientation", index=i, total=len(pdf_files), name=rel_path,
+             turned={str(p): d for p, d in turns.items()})
+    n_turned = sum(len(t) for t in found.values())
+    print(f"  Checked {n_pages} page(s) in {time.perf_counter() - start:.1f}s; {n_turned} need turning.")
+    emit("orientation_done", pages=n_pages, turned=n_turned)
     return found
 
 
@@ -561,26 +604,38 @@ def rotations_for(rotate_specs, rel_path: str) -> dict:
     return out
 
 
+def fail(message: str) -> int:
+    print(f"Error: {message}")
+    emit("error", message=message)
+    return 1
+
+
 def main():
+    global PROGRESS_JSON
     args = parse_args()
+    PROGRESS_JSON = args.progress_json
     print("=== Chandra OCR 2 PDF Annotator (offline) ===")
 
     input_dir = args.input_dir or input("Enter the input directory containing PDF files: ").strip().strip('"')
     if not os.path.isdir(input_dir):
-        print(f"Error: input directory '{input_dir}' does not exist.")
-        return 1
+        return fail(f"input folder '{input_dir}' does not exist.")
     output_dir = args.output_dir or input("Enter the output directory for processed PDFs: ").strip().strip('"')
+    if os.path.normcase(os.path.abspath(output_dir)) == os.path.normcase(os.path.abspath(input_dir)):
+        # Outputs keep the input file names, so this would overwrite the original notebooks.
+        return fail("the output folder must be different from the input folder.")
 
     if not model_is_downloaded():
-        print(f"Error: Chandra OCR 2 model not found in {MODEL_DIR}.")
         print("Run `python download_model.py` once while connected to the internet.")
-        return 1
+        return fail(f"Chandra OCR 2 model not found in {MODEL_DIR}. Re-run setup while online.")
 
     pdf_files = find_pdfs(input_dir, output_dir)
     if not pdf_files:
         print(f"No PDF files found in '{input_dir}'.")
+        emit("found", pdfs=0)
+        emit("done", pdfs=0, failed_pages=0)
         return 0
     print(f"Found {len(pdf_files)} PDF(s) to process.")
+    emit("found", pdfs=len(pdf_files))
 
     for file_part, _, _ in args.rotate:
         if file_part and not any(rotations_for([(file_part, {1}, 90)], os.path.relpath(p, input_dir))
@@ -593,8 +648,7 @@ def main():
     try:
         import chandra  # noqa: F401
     except ImportError:
-        print("chandra-ocr is not installed. Run setup.ps1 (or run.ps1) first.")
-        return 1
+        return fail("chandra-ocr is not installed. Run the installer (or setup.ps1) first.")
 
     import logging
     # Harmless kwargs warning, see https://github.com/vllm-project/vllm/issues/39768
@@ -605,25 +659,30 @@ def main():
         restrict_to_usable_gpus()  # must happen before torch is imported
 
     print("Loading Chandra OCR 2 model... (this may take a moment)")
+    emit("loading_model")
     try:
         manager, _ = load_chandra(args.device, args.gpu_reserve_gb, args.quantize)
     except Exception as e:
-        print(f"Failed to load model: {e}")
-        return 1
+        return fail(f"Failed to load model: {e}")
+    emit("model_loaded")
 
-    for input_pdf in pdf_files:
+    failed_pages = 0
+    for index, input_pdf in enumerate(pdf_files, 1):
         rel_path = os.path.relpath(input_pdf, input_dir)
         output_pdf = os.path.join(output_dir, rel_path)
         if args.skip_existing and os.path.exists(output_pdf):
             print(f"Skipping {input_pdf} (output exists)")
+            emit("pdf_skipped", index=index, total=len(pdf_files), name=rel_path)
             continue
         cache_dir = os.path.join(output_dir, CACHE_DIR_NAME, rel_path)
         rotations = dict(auto_turns.get(rel_path, {}))
         rotations.update(rotations_for(args.rotate, rel_path))  # manual --rotate wins
-        process_pdf(input_pdf, output_pdf, cache_dir, manager, args.dpi, args.quantize,
-                    {p: d for p, d in rotations.items() if d})
+        failed = process_pdf(input_pdf, output_pdf, cache_dir, manager, args.dpi, args.quantize,
+                             {p: d for p, d in rotations.items() if d}, index, len(pdf_files), rel_path)
+        failed_pages += max(0, failed)
 
     print("Done!")
+    emit("done", pdfs=len(pdf_files), failed_pages=failed_pages)
     return 0
 
 

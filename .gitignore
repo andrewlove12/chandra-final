@@ -18,3 +18,9 @@ models/
 *.PDF
 .ocr_cache/
 *_page_*.json
+
+# Installer build output and folders created by setup.ps1 -PortablePython
+dist/
+logs/
+tools/
+python/

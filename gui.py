@@ -484,8 +484,16 @@ class MainWindow(QMainWindow):
 
 
 def main():
+    if sys.platform == "win32":
+        # Same ID as the installer's shortcuts: the taskbar then groups the window
+        # under the app's own icon instead of pythonw.exe's.
+        import ctypes
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("ChandraNotebookOCR.App")
     app = QApplication(sys.argv)
     app.setApplicationName(APP_NAME)
+    icon = os.path.join(APP_DIR, "installer", "app.ico")
+    if os.path.exists(icon):
+        app.setWindowIcon(QIcon(icon))
     app.setStyle("Fusion")
     win = MainWindow()
     win.show()

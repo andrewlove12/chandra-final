@@ -42,7 +42,7 @@ ArchitecturesInstallIn64BitMode=x64compatible
 ExtraDiskSpaceRequired=21474836480
 OutputDir=..\dist
 OutputBaseFilename=ChandraNotebookOCR-Setup-{#AppVersion}
-SetupIconFile=app.ico
+SetupIconFile=installer.ico
 UninstallDisplayIcon={app}\installer\app.ico
 UninstallDisplayName={#AppName}
 WizardStyle=modern
@@ -52,9 +52,6 @@ CloseApplications=yes
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
-
-[Tasks]
-Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
 
 [Files]
 Source: "..\process_pdfs.py";    DestDir: "{app}"; Flags: ignoreversion
@@ -79,8 +76,8 @@ Source: "..\vc_redist.x64_2.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall
 Type: files; Name: "{app}\run.ps1"
 
 [Icons]
-Name: "{autoprograms}\{#AppName}"; Filename: "{app}\.venv\Scripts\pythonw.exe"; Parameters: """{app}\gui.py"""; WorkingDir: "{app}"; IconFilename: "{app}\installer\app.ico"; Comment: "Transcribe handwritten notebook PDFs offline"
-Name: "{autodesktop}\{#AppName}"; Filename: "{app}\.venv\Scripts\pythonw.exe"; Parameters: """{app}\gui.py"""; WorkingDir: "{app}"; IconFilename: "{app}\installer\app.ico"; Tasks: desktopicon
+Name: "{autoprograms}\{#AppName}"; Filename: "{app}\.venv\Scripts\pythonw.exe"; Parameters: """{app}\gui.py"""; WorkingDir: "{app}"; IconFilename: "{app}\installer\app.ico"; AppUserModelID: "ChandraNotebookOCR.App"; Comment: "Transcribe handwritten notebook PDFs offline"
+Name: "{autodesktop}\{#AppName}"; Filename: "{app}\.venv\Scripts\pythonw.exe"; Parameters: """{app}\gui.py"""; WorkingDir: "{app}"; IconFilename: "{app}\installer\app.ico"; AppUserModelID: "ChandraNotebookOCR.App"
 Name: "{autoprograms}\{#AppName} setup log"; Filename: "{app}\logs\setup.log"
 
 [Registry]

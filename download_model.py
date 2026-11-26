@@ -19,6 +19,48 @@ from orientation import (ORIENTATION_DIR, ORIENTATION_FILE, ORIENTATION_REPO, OR
 
 # Hugging Face anonymous usage telemetry off.
 os.environ["HF_HUB_DISABLE_TELEMETRY"] = "1"
+# When the output isn't a console (the installer shows it in its window), progress
+# bars that redraw one line don't work: print a plain progress line instead.
+INTERACTIVE = sys.stdout.isatty()
+if not INTERACTIVE:
+    os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] = "1"
+
+
+def _folder_bytes(path: str) -> int:
+    total = 0
+    for root, _, files in os.walk(path):
+        for name in files:
+            try:
+                total += os.path.getsize(os.path.join(root, name))
+            except OSError:
+                pass
+    return total
+
+
+def start_progress_lines(repo: str, revision: str, folder: str, every: float = 15.0):
+    """Print 'Downloaded X of Y GB' every few seconds (non-console output only). Returns a stop function."""
+    if INTERACTIVE:
+        return lambda: None
+    import threading
+    try:
+        from huggingface_hub import HfApi
+        info = HfApi().model_info(repo, revision=revision, files_metadata=True)
+        expected = sum(s.size or 0 for s in info.siblings)
+    except Exception:
+        expected = 0
+    done = threading.Event()
+
+    def run():
+        while not done.wait(every):
+            got = _folder_bytes(folder) / 1e9
+            if expected:
+                print(f"Downloaded {got:.1f} of {expected / 1e9:.1f} GB ({min(100, 100 * got * 1e9 / expected):.0f}%)",
+                      flush=True)
+            else:
+                print(f"Downloaded {got:.1f} GB", flush=True)
+
+    threading.Thread(target=run, daemon=True).start()
+    return done.set
 
 
 def main():
@@ -36,8 +78,12 @@ def main():
         print(f"Chandra OCR 2 model already present in {MODEL_DIR}")
     else:
         print(f"Downloading {MODEL_REPO} (revision {MODEL_REVISION[:12]}) to {MODEL_DIR}")
-        print("This is roughly 10 GB and only needs to happen once...")
-        snapshot_download(repo_id=MODEL_REPO, revision=MODEL_REVISION, local_dir=MODEL_DIR)
+        print("This is roughly 10 GB and only needs to happen once...", flush=True)
+        stop = start_progress_lines(MODEL_REPO, MODEL_REVISION, MODEL_DIR)
+        try:
+            snapshot_download(repo_id=MODEL_REPO, revision=MODEL_REVISION, local_dir=MODEL_DIR)
+        finally:
+            stop()
         with open(os.path.join(MODEL_DIR, "REVISION"), "w") as f:
             f.write(MODEL_REVISION)
 

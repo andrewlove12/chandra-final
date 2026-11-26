@@ -6,7 +6,7 @@ Reads scanned, handwritten lab-notebook PDFs on your own PC and saves a copy of 
 
 1. Run `ChandraNotebookOCR-Setup-<version>.exe` (built as described at the end of this section). It runs as administrator (Windows asks for permission once) and installs into `C:\Program Files\Chandra Notebook OCR` by default.
 2. When asked, say whether you have an **NVIDIA** or **AMD** graphics card (the one it finds is pre-selected). It installs the matching PyTorch; choose **Neither** if you have no graphics card or aren't sure, which installs the standard PyTorch that runs on the processor (much slower).
-3. Setup then downloads a private copy of Python, PyTorch and the OCR models (about 15 GB) in a window that shows the progress. This takes a while and needs internet only this once. It doesn't touch any Python already on the PC, and uninstalling removes everything it downloaded.
+3. Setup then downloads a private copy of Python, PyTorch and the OCR models (about 15 GB). The installer shows the download progress and everything setup is doing in its own window, and **Cancel** stops it (run the installer again later to finish). This takes a while and needs internet only this once. It doesn't touch any Python already on the PC, and uninstalling removes everything it downloaded.
 4. Open **Chandra Notebook OCR** from the Start menu or the desktop shortcut (both are created for all users): pick the folder with your notebook PDFs and a different folder for the results, and press Start. It shows progress per notebook and page, lists pages worth double-checking, and can be cancelled at any time (pages already read are kept, so the next run continues where it left off). It runs fully offline.
 
 If setup fails (for example the internet dropped), the error says so and the log is in the install folder under `logs\setup.log`; running the installer again continues where it stopped.
@@ -21,7 +21,7 @@ Every time the app or the OCR program runs, it writes a log file into the `logs`
 
 The logs contain folder paths and notebook file names but **never the transcribed text**. The last 30 of each kind are kept. If the install folder isn't writable, logs go to `%LOCALAPPDATA%\ChandraNotebookOCR\logs` instead.
 
-To build the installer: install [Inno Setup 6](https://jrsoftware.org/isinfo.php), then run `ISCC.exe installer\chandra-ocr.iss`. The result is in `dist\`. Silent installs accept `/GPU=nvidia`, `/GPU=amd` or `/GPU=none`.
+To build the installer: install [Inno Setup 6](https://jrsoftware.org/isinfo.php), then run `ISCC.exe installer\chandra-ocr.iss`. The result is `dist\ChandraNotebookOCR-Setup-<version>.exe`; the version is `AppVersion` at the top of the script, raised for every release (1.0.2, 1.0.3, ...) so each build can be told apart and uploaded to GitHub Releases. Silent installs accept `/GPU=nvidia`, `/GPU=amd` or `/GPU=none`.
 
 ## What setup installs
 

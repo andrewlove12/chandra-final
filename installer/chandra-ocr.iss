@@ -18,7 +18,7 @@
 ; The uninstaller removes the folder including the private Python and the models.
 
 #define AppName "Chandra Notebook OCR"
-#define AppVersion "1.0.0"
+#define AppVersion "1.0.2"
 #define AppPublisher "andrewlove12"
 #define AppURL "https://github.com/andrewlove12/chandra-final"
 
@@ -259,6 +259,125 @@ begin
   InstallVCRedist('vc_redist.x64_2.exe', 'Microsoft Visual C++ v14 runtime');
 end;
 
+// --- setup.ps1 runs hidden; its output is shown on the Installing page --------------
+// The green-box line (FilenameLabel) shows the latest output line (or download %),
+// and a scrolling box under the progress bar shows everything.
+const
+  EM_SCROLLCARET = $00B7;
+  MaxOutputLines = 1000;
+
+var
+  OutputMemo: TNewMemo;
+  SetupPid: Integer;
+  SetupCancelled: Boolean;
+  LastPercent: Integer;
+  OldCancelClick: TNotifyEvent;
+
+procedure CreateOutputMemo();
+var
+  Page: TNewNotebookPage;
+begin
+  Page := WizardForm.InstallingPage;
+  OutputMemo := TNewMemo.Create(WizardForm);
+  OutputMemo.Parent := Page;
+  OutputMemo.Left := WizardForm.ProgressGauge.Left;
+  OutputMemo.Top := WizardForm.ProgressGauge.Top + WizardForm.ProgressGauge.Height + ScaleY(12);
+  OutputMemo.Width := WizardForm.ProgressGauge.Width;
+  OutputMemo.Height := Page.ClientHeight - OutputMemo.Top - ScaleY(4);
+  OutputMemo.Anchors := [akLeft, akTop, akRight, akBottom];
+  OutputMemo.ReadOnly := True;
+  OutputMemo.ScrollBars := ssVertical;
+  OutputMemo.WordWrap := True;
+  OutputMemo.Font.Name := 'Consolas';
+  OutputMemo.Font.Size := 8;
+  OutputMemo.Visible := False;
+end;
+
+procedure AddOutputLine(const S: String);
+begin
+  if OutputMemo.Lines.Count >= MaxOutputLines then
+    OutputMemo.Lines.Delete(0);
+  OutputMemo.Lines.Add(S);
+  OutputMemo.SelStart := Length(OutputMemo.Text);
+  SendMessage(OutputMemo.Handle, EM_SCROLLCARET, 0, 0);
+end;
+
+function ParseProgress(const S: String; var Percent: Integer): Boolean;
+var
+  Rest: String;
+  P: Integer;
+  Done, Total: Int64;
+begin
+  // pip --progress-bar raw prints 'Progress <bytes> of <total>'.
+  Result := False;
+  if Copy(S, 1, 9) <> 'Progress ' then Exit;
+  Rest := Copy(S, 10, Length(S));
+  P := Pos(' of ', Rest);
+  if P = 0 then Exit;
+  Done := StrToInt64Def(Copy(Rest, 1, P - 1), -1);
+  Total := StrToInt64Def(Copy(Rest, P + 4, Length(Rest)), -1);
+  if (Done < 0) or (Total <= 0) then Exit;
+  Percent := Integer(Done * 100 div Total);
+  Result := True;
+end;
+
+function EnableWindow(hWnd: HWND; bEnable: BOOL): BOOL;
+  external 'EnableWindow@user32.dll stdcall';
+
+procedure OnSetupOutput(const S: String; const Error, FirstLine: Boolean);
+var
+  Line: String;
+  Percent: Integer;
+begin
+  // Setup disables its window while a program runs; turn it back on so the
+  // Cancel button (and scrolling the output box) work during the long download.
+  if not SetupCancelled then
+    EnableWindow(WizardForm.Handle, True);
+  Line := TrimRight(S);
+  if Line = '' then Exit;
+  if Copy(Line, 1, 11) = '[setup pid ' then
+  begin
+    SetupPid := StrToIntDef(Copy(Line, 12, Length(Line) - 12), 0);
+    Exit;
+  end;
+  if ParseProgress(Line, Percent) then
+  begin
+    // Download progress drives the bar; not added to the box (thousands of lines).
+    if Percent <> LastPercent then
+    begin
+      LastPercent := Percent;
+      WizardForm.ProgressGauge.Style := npbstNormal;
+      WizardForm.ProgressGauge.Max := 100;
+      WizardForm.ProgressGauge.Position := Percent;
+      WizardForm.FilenameLabel.Caption := 'Downloading... ' + IntToStr(Percent) + '%';
+    end;
+    Exit;
+  end;
+  if LastPercent >= 0 then
+  begin
+    LastPercent := -1;
+    WizardForm.ProgressGauge.Style := npbstMarquee;
+  end;
+  WizardForm.FilenameLabel.Caption := Trim(Line);
+  AddOutputLine(Line);
+end;
+
+procedure CancelSetupClick(Sender: TObject);
+var
+  ResultCode: Integer;
+begin
+  if SetupCancelled or (SetupPid = 0) then Exit;
+  if MsgBox('Stop downloading the OCR components?' + #13#10#13#10 +
+            'The program files stay installed. Run this installer again later to finish; ' +
+            'it picks up where it left off.', mbConfirmation, MB_YESNO or MB_DEFBUTTON2) <> IDYES then
+    Exit;
+  SetupCancelled := True;
+  WizardForm.CancelButton.Enabled := False;
+  AddOutputLine('Cancelling...');
+  Exec(ExpandConstant('{sys}\taskkill.exe'), '/PID ' + IntToStr(SetupPid) + ' /T /F', '',
+       SW_HIDE, ewWaitUntilTerminated, ResultCode);
+end;
+
 procedure RunSetupScript();
 var
   Params: String;
@@ -266,21 +385,43 @@ var
 begin
   Params := '-NoProfile -ExecutionPolicy Bypass -File "' + ExpandConstant('{app}\setup.ps1') +
             '" -Backend ' + BackendArg();
+  CreateOutputMemo();
+  OutputMemo.Visible := True;
+  // Let the user stop this long step (the Cancel button is normally off after files are copied).
+  OldCancelClick := WizardForm.CancelButton.OnClick;
+  WizardForm.CancelButton.OnClick := @CancelSetupClick;
   repeat
-    WizardForm.StatusLabel.Caption := 'Downloading Python, PyTorch and the OCR models (about 15 GB). ' +
-      'A window shows the details. This can take 30-60 minutes...';
+    WizardForm.StatusLabel.Caption := 'Downloading Python, PyTorch and the OCR models (about 15 GB)...';
+    WizardForm.FilenameLabel.Caption := '';
+    AddOutputLine('This needs internet and can take 30-60 minutes. The full log is saved in ' +
+                  ExpandConstant('{app}\logs\setup.log'));
     WizardForm.ProgressGauge.Style := npbstMarquee;
-    SetupOK := Exec(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'), Params,
-                    ExpandConstant('{app}'), SW_SHOW, ewWaitUntilTerminated, ResultCode) and (ResultCode = 0);
+    SetupPid := 0;
+    LastPercent := -1;
+    WizardForm.CancelButton.Enabled := True;
+    try
+      SetupOK := ExecAndLogOutput(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'), Params,
+                                  ExpandConstant('{app}'), SW_HIDE, ewWaitUntilTerminated, ResultCode,
+                                  @OnSetupOutput) and (ResultCode = 0);
+    except
+      AddOutputLine(GetExceptionMessage());
+      SetupOK := False;
+    end;
+    WizardForm.CancelButton.Enabled := False;
     WizardForm.ProgressGauge.Style := npbstNormal;
-    if SetupOK or WizardSilent() then
+    WizardForm.ProgressGauge.Position := WizardForm.ProgressGauge.Max;
+    if SetupOK or SetupCancelled or WizardSilent() then
       Break;  // silent installs can't answer the retry question (it would retry forever)
+    AddOutputLine('');
   until SuppressibleMsgBox('Setup could not finish downloading and installing the OCR components ' +
                '(error ' + IntToStr(ResultCode) + ').' + #13#10#13#10 +
                'Check your internet connection. Details are in:' + #13#10 +
                ExpandConstant('{app}\logs\setup.log') + #13#10#13#10 +
                'Try again now?', mbError, MB_RETRYCANCEL, IDCANCEL) <> IDRETRY;
-  if not SetupOK then
+  WizardForm.CancelButton.OnClick := OldCancelClick;
+  if SetupOK then
+    WizardForm.FilenameLabel.Caption := 'Setup complete.'
+  else
     SuppressibleMsgBox('The program files are installed, but the OCR components are not ready yet. ' +
            'Run this installer again later to finish; it picks up where it left off.', mbInformation, MB_OK, IDOK);
 end;

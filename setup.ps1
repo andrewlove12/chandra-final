@@ -35,6 +35,30 @@ function Get-Sha256([string]$Path) {
     } finally { $stream.Dispose() }
 }
 
+# When the installer runs this hidden and shows the output in its own window:
+# it reads this line to be able to cancel, and gets "Progress X of Y" lines from
+# pip instead of a progress bar.
+$redirected = [Console]::IsOutputRedirected
+if ($redirected) { Write-Host "[setup pid $PID]" }
+$pipProgress = if ($redirected) { "raw" } else { "on" }
+$env:PYTHONUNBUFFERED = "1"
+
+function Invoke-Logged {
+    # Runs a program and passes its output (stdout and stderr) through PowerShell, so
+    # it reaches both setup.log and the installer window. (Called directly, a
+    # program's output skips the transcript when the output is redirected.) pip's
+    # 'Progress X of Y' lines go only to the installer: thousands of them.
+    # (No param block on purpose: arguments like -m must reach the program, not PowerShell.)
+    $exe = $args[0]
+    $programArgs = @($args | Select-Object -Skip 1 | ForEach-Object { $_ })  # flattens array arguments
+    $ErrorActionPreference = "Continue"  # stderr lines aren't errors; the exit code is checked
+    & $exe @programArgs 2>&1 | ForEach-Object {
+        $line = "$_"
+        if ($line -match "^Progress \d+ of \d+$") { [Console]::Out.WriteLine($line) }
+        else { Write-Host $line }
+    }
+}
+
 $logDir = Join-Path $PSScriptRoot "logs"
 New-Item -ItemType Directory -Force $logDir | Out-Null
 try { Start-Transcript -Path (Join-Path $logDir "setup.log") -Append | Out-Null } catch { }
@@ -165,21 +189,21 @@ if (-not (Test-Path $venvPython)) {
     Write-Host "Installing Python $($spec.Python) into $privatePythonDir and creating .venv..."
     # --no-bin / --no-registry: don't add python.exe to a PATH folder or register
     # it in the Windows registry (both would be outside this folder).
-    & $uv python install --no-bin --no-registry $spec.Python
+    Invoke-Logged $uv python install --no-bin --no-registry $spec.Python
     if ($LASTEXITCODE -ne 0) { throw "Couldn't download Python $($spec.Python)." }
-    & $uv venv --seed --python $spec.Python $venvDir
+    Invoke-Logged $uv venv --seed --python $spec.Python $venvDir
     if ($LASTEXITCODE -ne 0 -or -not (Test-VenvIsPrivate)) { throw "Couldn't create .venv with Python $($spec.Python)." }
 }
 
 # --- Packages ------------------------------------------------------------------
 if ($previous -ne $state) {
     Write-Host "Installing PyTorch ($Backend)..."
-    & $venvPython -m pip install --upgrade pip
-    & $venvPython -m pip install --index-url $spec.Index @($spec.Packages)
+    Invoke-Logged $venvPython -m pip install --upgrade pip
+    Invoke-Logged $venvPython -m pip install --progress-bar $pipProgress --index-url $spec.Index @($spec.Packages)
     if ($LASTEXITCODE -ne 0) { throw "PyTorch installation failed." }
 
     Write-Host "Installing other packages..."
-    & $venvPython -m pip install -r requirements.txt
+    Invoke-Logged $venvPython -m pip install --progress-bar $pipProgress -r requirements.txt
     if ($LASTEXITCODE -ne 0) { throw "Package installation failed." }
 
     Set-Content $stateFile $state
@@ -190,7 +214,7 @@ if ($previous -ne $state) {
 & $venvPython -m compileall -q -l $PSScriptRoot | Out-Null
 
 # --- Model -----------------------------------------------------------------------
-& $venvPython download_model.py
+Invoke-Logged $venvPython download_model.py
 if ($LASTEXITCODE -ne 0) { throw "Model download failed." }
 
 Write-Host "Setup complete."

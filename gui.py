@@ -192,6 +192,11 @@ class MainWindow(QMainWindow):
         buttons.addWidget(self.start_btn)
         buttons.addWidget(self.cancel_btn)
         buttons.addStretch(1)
+        self.logs_btn = QPushButton("Open logs folder")
+        self.logs_btn.setToolTip("Log files to send if something isn't working. They contain progress, settings, "
+                                 "folder and file names, and errors, but never the transcribed text.")
+        self.logs_btn.clicked.connect(self._open_logs)
+        buttons.addWidget(self.logs_btn)
         buttons.addWidget(self.open_btn)
         root.addLayout(buttons)
 
@@ -284,6 +289,14 @@ class MainWindow(QMainWindow):
         folder = QFileDialog.getExistingDirectory(self, title, start)
         if folder:
             edit.setText(os.path.normpath(folder))
+
+    def _open_logs(self):
+        import run_log
+        folder = run_log.log_dir()
+        if folder:
+            QDesktopServices.openUrl(QUrl.fromLocalFile(folder))
+        else:
+            QMessageBox.information(self, APP_NAME, "No folder for log files could be created.")
 
     def _open_output(self):
         folder = self.output_edit.text().strip()
@@ -484,6 +497,9 @@ class MainWindow(QMainWindow):
 
 
 def main():
+    sys.path.insert(0, APP_DIR)
+    import run_log
+    run_log.start("gui")  # app-level errors; each OCR run writes its own run-*.log
     if sys.platform == "win32":
         # Same ID as the installer's shortcuts: the taskbar then groups the window
         # under the app's own icon instead of pythonw.exe's.

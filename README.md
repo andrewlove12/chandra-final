@@ -11,6 +11,16 @@ Reads scanned, handwritten lab-notebook PDFs on your own PC and saves a copy of 
 
 If setup fails (for example the internet dropped), the error says so and the log is in the install folder under `logs\setup.log`; running the installer again continues where it stopped.
 
+### Log files (for reporting problems)
+
+Every time the app or the OCR program runs, it writes a log file into the `logs` folder in the install folder (`C:\Program Files\Chandra Notebook OCR\logs`); the app's **Open logs folder** button opens it. If something isn't working, attach the newest files to an issue:
+
+- `run-<date>-<time>.log`: one per OCR run (also from the command line). Settings, GPU and memory, each notebook and page, timings, warnings and errors, with the time on every line.
+- `gui-<date>-<time>.log`: one per app start; errors in the app itself.
+- `setup.log`: the installer's download and setup steps.
+
+The logs contain folder paths and notebook file names but **never the transcribed text**. The last 30 of each kind are kept. If the install folder isn't writable, logs go to `%LOCALAPPDATA%\ChandraNotebookOCR\logs` instead.
+
 To build the installer: install [Inno Setup 6](https://jrsoftware.org/isinfo.php), then run `ISCC.exe installer\chandra-ocr.iss`. The result is in `dist\`. Silent installs accept `/GPU=nvidia`, `/GPU=amd` or `/GPU=none`.
 
 ## What setup installs

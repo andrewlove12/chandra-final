@@ -56,6 +56,7 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 [Files]
 Source: "..\process_pdfs.py";    DestDir: "{app}"; Flags: ignoreversion
 Source: "..\gui.py";             DestDir: "{app}"; Flags: ignoreversion
+Source: "..\run_log.py";         DestDir: "{app}"; Flags: ignoreversion
 Source: "..\repeat_guard.py";    DestDir: "{app}"; Flags: ignoreversion
 Source: "..\orientation.py";     DestDir: "{app}"; Flags: ignoreversion
 Source: "..\gpu_select.py";      DestDir: "{app}"; Flags: ignoreversion
@@ -70,6 +71,11 @@ Source: "..\README.md";          DestDir: "{app}"; Flags: ignoreversion
 Source: "app.ico";               DestDir: "{app}\installer"; Flags: ignoreversion
 Source: "..\vc_redist.x64_1.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall
 Source: "..\vc_redist.x64_2.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall
+
+[Dirs]
+; Log files (logs\run-*.log, logs\gui-*.log, setup.log) for troubleshooting. The app runs as a normal
+; user and Program Files is read-only for them, so give users write access to this one folder.
+Name: "{app}\logs"; Permissions: users-modify
 
 [InstallDelete]
 ; Left over from older versions: everything now goes through the installer and the app.

@@ -24,3 +24,8 @@ dist/
 logs/
 tools/
 python/
+
+# Screenshots and other images dropped into the folder (may show notebook pages)
+*.png
+*.jpg
+*.jpeg

@@ -612,9 +612,13 @@ def fail(message: str) -> int:
 
 def main():
     global PROGRESS_JSON
+    import run_log
+    log_file = run_log.start("run")  # copy of everything printed, for troubleshooting
     args = parse_args()
     PROGRESS_JSON = args.progress_json
     print("=== Chandra OCR 2 PDF Annotator (offline) ===")
+    if log_file:
+        print(f"Log file: {log_file}")
 
     input_dir = args.input_dir or input("Enter the input directory containing PDF files: ").strip().strip('"')
     if not os.path.isdir(input_dir):
@@ -687,4 +691,14 @@ def main():
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    try:
+        code = main()
+    except KeyboardInterrupt:
+        print("Stopped.")
+        code = 1
+    except Exception:
+        traceback.print_exc()  # goes to the log too
+        print("Error: unexpected failure; see the traceback above.")
+        code = 1
+    print(f"Exit code {code}")
+    sys.exit(code)
